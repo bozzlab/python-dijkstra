@@ -14,3 +14,7 @@ python main.py --route_filt=<CSV>
 ```
 python -m unittest test_main.py 
 ```
+or 
+```
+pytest
+```

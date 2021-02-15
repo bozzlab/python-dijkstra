@@ -1,61 +1,89 @@
-import csv
+from typing import List, Tuple, Dict, Set, TextIO
 import argparse
+import csv
 
 class Routes:
-    def prepare_data_source(self, filename : object):
-        """ Read data the CSV and prepare it to find the all routes """
-        try:
-            with open(filename) as csv_file:
-                csv_read = csv.reader(csv_file, delimiter = ',')
-                self.routes_data = [(row[0],row[1],row[2]) for row in csv_read] 
-                self.unique_nodes = set()
-                [self.unique_nodes.update([node[0], node[1]]) for node in self.routes_data]
-                self.routes_paths = {node : {} for node in self.unique_nodes}
-                [self.routes_paths[row[0]].update({row[1] : int(row[2])}) for row in self.routes_data]        
+    """ Routes """
+    def __init__(self):
+        self.routes_data : List = list()
+        self.routes_paths : Dict = dict()
+        self.shortest_path : List = list()
+        self.__stations : Set = set()
+        self.origin : str = str()
+        self.dest : str = str()
 
-        except Exception as e:
-            print(f"Prepare data source, Error: {e}")
-            raise e
+    def read_csv(
+                self, 
+                filename : TextIO
+                ) -> None:
+        """ 
+        Read the csv file, Then collect to list. 
+        """
+        with open(filename) as csv_file:
+            self.routes_data = [(row[0],row[1], int(row[2])) 
+                                for row in csv.reader(csv_file, delimiter = ',')] 
+    
+    def __prepare_data(self):
+        """ 
+        counting the unique station and collecting the direct path for each station  
+        """
+        [self.__stations.update(row[0], row[1]) for row in self.routes_data] 
+        self.routes_paths = {station : {} for station in self.__stations} 
+        [self.routes_paths[row[0]].update({row[1] : row[2]}) for row in self.routes_data] 
 
-    def find_shortest_route(self, origin : str, dest : str) -> (int, int):
-        """ finding the shortest route from origin to dest """
-        try:
-            self.time_to_dest = {node : float("inf") if node != origin else 0 for node in self.unique_nodes}
-            self.shortest_path = []
-            unmark_nodes = sorted([node for node in self.unique_nodes])
-            mark_nodes_path = {node_origin : None for node_origin in self.unique_nodes}
-            collecting_route_path = True
-            
-            while unmark_nodes:
-                import pdb; pdb.set_trace()
-                for node, time in self.routes_paths[unmark_nodes[0]].items():
-                    time_path = self.time_to_dest[unmark_nodes[0]] + time
-                    if self.time_to_dest[node] > time_path:
-                        self.time_to_dest[node] = time_path
-                        mark_nodes_path[node] = unmark_nodes[0]
-                unmark_nodes.remove(unmark_nodes[0])
+    def __find_shortest_path(self) -> Tuple[int, int]:
+        """ 
+        Finding the shortest path for each origin to dest.
 
-            while collecting_route_path:
-                next_path = dest
-                for node in mark_nodes_path:
-                    if mark_nodes_path[next_path] != None:
-                        self.shortest_path.append(mark_nodes_path[next_path])
-                        next_path = mark_nodes_path[next_path]
-                collecting_route_path = False
+        Returns:
+            (int, int) : stop step and total time
+        """
+        time_to_dest = {station : float("inf") if station != self.origin else 0 for station in self.__stations}
+        unreach_stations = sorted([station for station in self.__stations])
+        reach_stations = {station : None for station in self.__stations}
+        is_paths_incomplete = True
 
-            if self.shortest_path:
-                self.shortest_path.insert(0, dest)
-                self.shortest_path.reverse()
+        while unreach_stations:
+            for station, time in self.routes_paths[unreach_stations[0]].items():
+                time_path = time_to_dest[unreach_stations[0]] + time
+                if time_to_dest[station] > time_path:
+                    time_to_dest[station] = time_path
+                    reach_stations[station] = unreach_stations[0]
+            unreach_stations.remove(unreach_stations[0])
 
-            self.stops = [node for node in self.shortest_path if node not in [origin, dest]]
-            
-            return len(self.stops), self.time_to_dest[dest]
+        while is_paths_incomplete:
+            next_path = self.dest
+            for node in reach_stations:
+                if reach_stations[next_path] != None:
+                    self.shortest_path.append(reach_stations[next_path])
+                    next_path = reach_stations[next_path]
+            is_paths_incomplete = False
 
-        except Exception as e:
-            print(f"Finding the shortest route, Error : {e}")
+        if self.shortest_path:
+            self.shortest_path.insert(0, self.dest)
+            self.shortest_path.reverse()
+        
+        return len([station for station in self.shortest_path if station not in [self.origin, self.dest]]), time_to_dest[self.dest]
 
-        except KeyError as ke:
-            print(f"Key Invalid, Error : {ke}")
+    def get_shortest_path(self) -> Dict[str,int]:
+        """
+        Get the shortest path.  
+
+        Returns:
+            Dict(str, int) : Result of shortest path including Stop and Total time.          
+        """
+        self.__prepare_data()
+        if self.origin not in self.__stations or self.dest not in self.__stations:
+            print("Invalid Input")
+            return
+
+        stop, total_time = self.__find_shortest_path()
+
+        if total_time == float("inf") or total_time == 0:
+            print(f"Your trip from {self.origin} to {self.dest}, No routes from {self.origin} to {self.dest}")
+            return
+
+        return {"stop" : stop, "total_time" : total_time}
 
 
 if __name__ == "__main__":
@@ -64,14 +92,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     try:
         r = Routes()
-        r.prepare_data_source(args.file)
-        input_origin = input(str("What station are you getting on the train? : "))
-        input_dest = input(str("What station are you getting off the train?: "))
-        stop, time = r.find_shortest_route(input_origin, input_dest)
-        if time == float("inf") or time == 0:
-            print(f"Your trip from {input_origin} to {input_dest}, No routes from {input_origin} to {input_dest}")
-        else  :
-            print(f"Your trip from {input_origin} to {input_dest} includes {stop} stops and will take {time} minutes")
-
+        r.read_csv(args.file)
+        r.origin = input(str("What station are you getting on the train? : "))
+        r.dest = input(str("What station are you getting off the train?: "))
+        result = r.get_shortest_path()
+        if result:
+            print(f"Your trip from {r.origin} to {r.dest} includes {result['stop']} stops and will take {result['total_time']} minutes")
     except TypeError as te:
         print(f"Invalid input type, Error : {te}")
